@@ -26,10 +26,29 @@ export default class Tab {
     }
   }
 
+  getAllStoreKeys(key: string): string[] {
+    try {
+      return JSON.parse(this.window.localStorage.getItem(key) ?? '[]');
+    } catch (e) {
+      console.warn(`Get all store keys failed`);
+      return [];
+    }
+  }
+
   saveState(key: string, state: object) {
     const toSave = JSON.stringify({
       id: this.tabId,
       state,
+    });
+
+    // Save the state in local storage
+    this.window.localStorage.setItem(key, toSave);
+  }
+
+  saveStoreState(key: string, storeState: object) {
+    const toSave = JSON.stringify({
+      id: this.tabId,
+      storeState,
     });
 
     // Save the state in local storage
@@ -47,6 +66,20 @@ export default class Tab {
         console.warn(`State saved in localStorage with key ${key} is invalid!`);
       }
     }
+  }
+
+  fetchStoreState(key: string): any {
+    const value = this.window.localStorage.getItem(key);
+
+    if (value) {
+      try {
+        const parsed = JSON.parse(value);
+        return parsed.state;
+      } catch (e) {
+        console.warn(`State saved in localStorage with key ${key} is invalid!`);
+      }
+    }
+    return {};
   }
 
   addEventListener(key: string, cb: Function) {
@@ -68,5 +101,34 @@ export default class Tab {
         );
       }
     });
+  }
+
+  addStorageEventListener(storeKey: string, cb: Function) {
+    return this.window.addEventListener('storage', (event: StorageEvent) => {
+      if (!event.newValue || event.key !== storeKey) {
+        return;
+      }
+
+      try {
+        const newState = JSON.parse(event.newValue);
+
+        // Check if the new state is from another tab
+        if (newState.id !== this.tabId) {
+          cb();
+        }
+      } catch (e) {
+        console.warn(
+          `New state saved in localStorage with key ${storeKey} is invalid`
+        );
+      }
+    });
+  }
+
+  saveStoreKeys(key: string, storeKeys: string[]): void {
+    try {
+      this.window.localStorage.setItem(key, JSON.stringify(storeKeys));
+    } catch (e) {
+      console.warn(`Saving store keys failed`);
+    }
   }
 }

@@ -1,22 +1,29 @@
-import { pick, set, remove } from 'dot-object';
+import { pick, remove, set } from 'dot-object';
 import Tab from './tab';
 
 export interface Options {
   statesPaths?: string[];
   key?: string;
+  saveStoreIndividually?: boolean;
+
   onBeforeReplace?(state: any): any;
+
   onBeforeSave?(state: any): any;
 }
 
 export default function(options?: Options) {
   const tab = new Tab(window);
   let key: string = 'vuex-multi-tab';
+  const keyStoreKeys: string = 'vuex-storekeys';
+  const prefixStoreKey: string = 'vuex-store-';
+  let saveStoreIndividually = false;
   let statesPaths: string[] = [];
   let onBeforeReplace = (state: any) => state;
   let onBeforeSave = (state: any) => state;
 
   if (options) {
     key = options.key ? options.key : key;
+    saveStoreIndividually = options.saveStoreIndividually ?? false;
     statesPaths = options.statesPaths ? options.statesPaths : statesPaths;
     onBeforeReplace = options.onBeforeReplace || onBeforeReplace;
     onBeforeSave = options.onBeforeSave || onBeforeSave;
@@ -76,7 +83,7 @@ export default function(options?: Options) {
     }
   }
 
-  return (store: any) => {
+  const singleStoreState = (store: any) => {
     // First time, fetch state from local storage
     tab.fetchState(key, (state: object) => {
       replaceState(store, state);
@@ -103,4 +110,55 @@ export default function(options?: Options) {
       }
     });
   };
+
+  const individualStoreState = (store: any) => {
+    // First time, fetch state from local storage
+    replaceState(store, {
+      ...tab.getAllStoreKeys(keyStoreKeys).map(storeKey => {
+        return {
+          [storeKey.replace(prefixStoreKey, '')]: {
+            ...tab.fetchStoreState(storeKey),
+          },
+        };
+      }),
+    });
+
+    // Add event listener to the state saved in local storage
+    tab.getAllStoreKeys(keyStoreKeys).forEach(storeKey => {
+      tab.addStorageEventListener(storeKey, () => {
+        replaceState(store, {
+          ...tab.getAllStoreKeys(keyStoreKeys).map(storeKey1 => {
+            return {
+              [storeKey1.replace(prefixStoreKey, '')]: {
+                ...tab.fetchStoreState(storeKey1),
+              },
+            };
+          }),
+        });
+      });
+    });
+
+    store.subscribe((mutation: MutationEvent, state: object) => {
+      let toSave = state;
+
+      // Filter state
+      if (statesPaths.length > 0) {
+        toSave = filterStates(state);
+      }
+
+      toSave = onBeforeSave(toSave);
+
+      // Save state in local storage
+      if (toSave) {
+        const storeKeys = Object.keys(toSave);
+        tab.saveStoreKeys(keyStoreKeys, storeKeys);
+        // eslint-disable-next-line no-restricted-syntax
+        for (const storeKey of storeKeys) {
+          tab.saveStoreState(storeKey, toSave);
+        }
+      }
+    });
+  };
+
+  return saveStoreIndividually ? individualStoreState : singleStoreState;
 }
